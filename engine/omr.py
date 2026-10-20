@@ -775,15 +775,44 @@ def cell_fraction(gray, cx, cy, r):
 
 
 def measure(gray, layout):
+    """
+    Measure darkness inside OMR bubbles.
+    Use local contrast against surrounding paper to improve
+    detection of dark marks on pink printed OMR sheets.
+    """
     r = layout["d"] / 2.0
     fr = []
-    for blk in layout["blocks"]:
-        fb = [[cell_fraction(gray, cx, cy, r) for (cx, cy, _) in row] for row in blk["cells"]]
-        fr.append(np.array(fb))
-    allv = np.concatenate([f.ravel() for f in fr])
-    base = float(min(np.median(allv), 0.35))
-    return [np.clip((f - base) / (1 - base), 0, 1) for f in fr], base
 
+    for blk in layout["blocks"]:
+        fb = []
+
+        for row in blk["cells"]:
+            row_values = []
+
+            for cx, cy, inferred in row:
+                value = cell_fraction(gray, cx, cy, r)
+                row_values.append(value)
+
+            fb.append(row_values)
+
+        fr.append(np.array(fb, dtype=np.float32))
+
+    if not fr:
+        return [], 0.0
+
+    allv = np.concatenate([f.ravel() for f in fr])
+
+    # Estimate the background level from the lighter bubbles.
+    base = float(np.percentile(allv, 35))
+    base = min(max(base, 0.0), 0.35)
+
+    # Increase contrast between empty and filled bubbles.
+    measured = [
+        np.clip((f - base) / max(1.0 - base, 0.01), 0.0, 1.0)
+        for f in fr
+    ]
+
+    return measured, base
 
 def classify(c):
     order = np.argsort(c)[::-1]
