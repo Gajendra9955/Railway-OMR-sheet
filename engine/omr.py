@@ -199,64 +199,161 @@ def _fail(reason, message, **kw):
 
 def discover_grid(b, d, n_opt=N_OPT):
     if len(b) < 40:
-        return _fail("few_bubbles", f"OMR में केवल {len(b)} बुलबुले मिले। फ़ोटो/स्कैन साफ़ और पूरा शीट दिखता हुआ होना चाहिए।")
+        return _fail(
+            "few_bubbles",
+            f"OMR में केवल {len(b)} बुलबुले मिले। "
+            "फ़ोटो/स्कैन साफ़ और पूरी शीट दिखती हुई होनी चाहिए।"
+        )
+
     xs, ys = b[:, 0], b[:, 1]
+
     cols = []
     for g in cluster_1d(xs, 0.45 * d):
-        cols.append(dict(x=float(xs[g].mean()), n=len(g), idx=g))
-    mx = max(c["n"] for c in cols)
-    cols = sorted([c for c in cols if c["n"] >= 0.35 * mx], key=lambda c: c["x"])
+        cols.append({
+            "x": float(xs[g].mean()),
+            "n": len(g),
+            "idx": g
+        })
+
+    mx = max((c["n"] for c in cols), default=0)
+    cols = sorted(
+        [c for c in cols if c["n"] >= 0.35 * mx],
+        key=lambda c: c["x"]
+    )
+
     if len(cols) == 0 or len(cols) % n_opt != 0:
-        return _fail("columns", f"उत्तर-ग्रिड में {len(cols)} बुलबुला-कॉलम मिले; यह {n_opt} के गुणज में होना चाहिए (हर प्रश्न में {n_opt} विकल्प)।",
-                     n_columns=len(cols))
-    groups = [cols[i:i + n_opt] for i in range(0, len(cols), n_opt)]
+        return _fail(
+            "columns",
+            f"उत्तर-ग्रिड में {len(cols)} बुलबुला-कॉलम मिले; "
+            f"यह {n_opt} के गुणज में होना चाहिए "
+            f"(हर प्रश्न में {n_opt} विकल्प)।",
+            n_columns=len(cols)
+        )
+
+    groups = [
+        cols[i:i + n_opt]
+        for i in range(0, len(cols), n_opt)
+    ]
+
     inner_gaps = []
+
     for g in groups:
         gx = np.diff([c["x"] for c in g])
-        if gx.min() <= 0 or gx.max() / gx.min() > 1.4:
-            return _fail("irregular", "विकल्पों (A,B,C,D) के बीच की दूरी अनियमित है; शीट मुड़ी या धुंधली हो सकती है।")
-        inner_gaps += list(gx)
+
+        if (
+            len(gx) == 0
+            or gx.min() <= 0
+            or gx.max() / gx.min() > 1.4
+        ):
+            return _fail(
+                "irregular",
+                "विकल्पों (A, B, C, D) के बीच की दूरी "
+                "अनियमित है; शीट मुड़ी या धुंधली हो सकती है।"
+            )
+
+        inner_gaps.extend(gx.tolist())
+
     inner = float(np.median(inner_gaps))
+
     for a, c in zip(groups[:-1], groups[1:]):
         if c[0]["x"] - a[-1]["x"] < 1.25 * inner:
-            return _fail("blocks", "प्रश्न-कॉलम आपस में अलग नहीं पहचाने जा सके।")
+            return _fail(
+                "blocks",
+                "प्रश्न-कॉलम आपस में अलग नहीं पहचाने जा सके।"
+            )
+
     blocks = []
+
     for g in groups:
         centers = np.array([c["x"] for c in g])
-        # every bubble near one of this block's option columns
+
         dist = np.abs(xs[:, None] - centers[None, :])
-        near = np.where(dist.min(axis=1) <= 0.6 * d)[0]
+
+        near = np.where(
+            dist.min(axis=1) <= 0.6 * d
+        )[0]
+
         opt_of = dist.argmin(axis=1)
+
         rows = []
+
         for r in cluster_1d(ys[near], 0.5 * d):
             members = near[r]
+
             if len(set(opt_of[members].tolist())) >= 2:
                 rows.append(float(ys[members].mean()))
+
         rows = sorted(rows)
+
         if len(rows) < 3:
-            return _fail("rows", "एक प्रश्न-कॉलम में पंक्तियाँ पर्याप्त नहीं मिलीं।")
+            return _fail(
+                "rows",
+                "एक प्रश्न-कॉलम में पर्याप्त पंक्तियाँ नहीं मिलीं।"
+            )
+
         rows = _core_rows(rows)
+
         if len(rows) < 3:
-            return _fail("rows", "प्रश्न-पंक्तियों की दूरी नियमित नहीं मिली (शीट मुड़ी/धुंधली हो सकती है)।")
+            return _fail(
+                "rows",
+                "प्रश्न-पंक्तियों की दूरी नियमित नहीं मिली। "
+                "शीट मुड़ी या धुंधली हो सकती है।"
+            )
+
         rows = _fill_missing_rows(rows)
-        # refine each option column's x from the bubbles that sit on the selected rows
+
         cx_ref = []
+
         for j, c in enumerate(g):
-            sel = [xs[i] for i in near if opt_of[i] == j and np.min(np.abs(np.array(rows) - ys[i])) <= 0.5 * d]
-            cx_ref.append(float(np.median(sel)) if len(sel) >= 3 else c["x"])
+            sel = [
+                xs[i]
+                for i in near
+                if opt_of[i] == j
+                and np.min(np.abs(np.array(rows) - ys[i])) <= 0.5 * d
+            ]
+
+            cx_ref.append(
+                float(np.median(sel))
+                if len(sel) >= 3
+                else c["x"]
+            )
+
         cells = []
+
         for ry in rows:
             row = []
+
             for j, cxj in enumerate(cx_ref):
                 cx, cy, inferred = cxj, ry, True
-                dd = np.hypot(b[:, 0] - cxj, b[:, 1] - ry)
+
+                dd = np.hypot(
+                    b[:, 0] - cxj,
+                    b[:, 1] - ry
+                )
+
                 k = int(np.argmin(dd))
+
                 if dd[k] <= 0.6 * d:
-                    cx, cy, inferred = float(b[k, 0]), float(b[k, 1]), False
+                    cx = float(b[k, 0])
+                    cy = float(b[k, 1])
+                    inferred = False
+
                 row.append((cx, cy, inferred))
+
             cells.append(row)
-        blocks.append(dict(cols=cx_ref, rows=rows, cells=cells))
-    return dict(ok=True, blocks=blocks, d=d, pitch=inner)
+
+        blocks.append({
+            "cols": cx_ref,
+            "rows": rows,
+            "cells": cells
+        })
+
+    return {
+        "ok": True,
+        "blocks": blocks,
+        "d": d,
+        "pitch": inner
+    }
 
 
 def _core_rows(rows):
