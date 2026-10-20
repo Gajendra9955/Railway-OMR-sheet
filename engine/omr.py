@@ -197,9 +197,7 @@ def _fail(reason, message, **kw):
     return dict(ok=False, reason=reason, message=message, **kw)
 
 
-
-
-        def discover_grid(b, d, n_opt=N_OPT):
+def discover_grid(b, d, n_opt=N_OPT):
     """
     Detect OMR option columns and question rows.
     Supports two-block sheets such as Q1-55 on the left
