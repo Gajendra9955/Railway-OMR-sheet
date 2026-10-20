@@ -136,7 +136,10 @@ def find_bubbles(gray):
     h, w = gray.shape
     blur = cv2.GaussianBlur(gray, (3, 3), 0)
     bs = int(round(w * 0.035)) | 1
-    th = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, bs, 12)
+    # Railway OMRs often use pale pink outlines. A lower adaptive-threshold
+    # offset preserves these printed circles instead of detecting only dark fills.
+    bs = max(31, min(bs, 151))
+    th = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, bs, 7)
     cnts, hier = cv2.findContours(th, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     dmin, dmax = 0.007 * w, 0.045 * w
     cand = []
@@ -157,7 +160,7 @@ def find_bubbles(gray):
             continue
         circ = 4 * np.pi * area / (per * per)
         ext = area / float(bw * bh)
-        if circ < 0.62 or ext < 0.6:
+        if circ < 0.48 or ext < 0.48:
             continue
         cand.append((x + bw / 2.0, y + bh / 2.0, (bw + bh) / 2.0))
     if len(cand) < 8:
@@ -202,7 +205,7 @@ def discover_grid(b, d, n_opt=N_OPT):
     for g in cluster_1d(xs, 0.45 * d):
         cols.append(dict(x=float(xs[g].mean()), n=len(g), idx=g))
     mx = max(c["n"] for c in cols)
-    cols = sorted([c for c in cols if c["n"] >= 0.55 * mx], key=lambda c: c["x"])
+    cols = sorted([c for c in cols if c["n"] >= 0.35 * mx], key=lambda c: c["x"])
     if len(cols) == 0 or len(cols) % n_opt != 0:
         return _fail("columns", f"उत्तर-ग्रिड में {len(cols)} बुलबुला-कॉलम मिले; यह {n_opt} के गुणज में होना चाहिए (हर प्रश्न में {n_opt} विकल्प)।",
                      n_columns=len(cols))
