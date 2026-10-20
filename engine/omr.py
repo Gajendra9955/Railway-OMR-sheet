@@ -197,39 +197,69 @@ def _fail(reason, message, **kw):
     return dict(ok=False, reason=reason, message=message, **kw)
 
 
-def discover_grid(b, d, n_opt=N_OPT):
+
+
+        def discover_grid(b, d, n_opt=N_OPT):
+    """
+    Detect OMR option columns and question rows.
+    Supports two-block sheets such as Q1-55 on the left
+    and Q56-110 on the right, with A/B/C/D options.
+    """
     if len(b) < 40:
         return _fail(
             "few_bubbles",
             f"OMR में केवल {len(b)} बुलबुले मिले। "
-            "फ़ोटो/स्कैन साफ़ और पूरी शीट दिखती हुई होनी चाहिए।"
+            "कृपया साफ़ और पूरा OMR स्कैन अपलोड करें।"
         )
 
-    xs, ys = b[:, 0], b[:, 1]
+    xs = b[:, 0].astype(float)
+    ys = b[:, 1].astype(float)
 
-    cols = []
+    # Step 1: Detect raw X-coordinate clusters.
+    raw_cols = []
     for g in cluster_1d(xs, 0.45 * d):
-        cols.append({
+        if len(g) == 0:
+            continue
+
+        raw_cols.append({
             "x": float(xs[g].mean()),
             "n": len(g),
             "idx": g
         })
 
-    mx = max((c["n"] for c in cols), default=0)
-    cols = sorted(
-        [c for c in cols if c["n"] >= 0.35 * mx],
-        key=lambda c: c["x"]
-    )
+    raw_cols.sort(key=lambda c: c["x"])
 
-    if len(cols) == 0 or len(cols) % n_opt != 0:
+    if len(raw_cols) < n_opt:
         return _fail(
             "columns",
-            f"उत्तर-ग्रिड में {len(cols)} बुलबुला-कॉलम मिले; "
-            f"यह {n_opt} के गुणज में होना चाहिए "
-            f"(हर प्रश्न में {n_opt} विकल्प)।",
+            f"केवल {len(raw_cols)} कॉलम पहचाने गए। "
+            "स्कैन की स्पष्टता और बुलबुला पहचान जाँचें।",
+            n_columns=len(raw_cols)
+        )
+
+    # Step 2: Remove only very weak/noisy clusters.
+    # The previous 35% threshold could discard a valid option column.
+    max_n = max(c["n"] for c in raw_cols)
+    cols = [
+        c for c in raw_cols
+        if c["n"] >= max(3, 0.08 * max_n)
+    ]
+    cols.sort(key=lambda c: c["x"])
+
+    # If filtering removed too many columns, retain raw clusters.
+    if len(cols) < n_opt or len(cols) % n_opt != 0:
+        cols = raw_cols
+
+    if len(cols) % n_opt != 0:
+        return _fail(
+            "columns",
+            f"{len(cols)} कॉलम पहचाने गए, लेकिन विकल्पों की "
+            f"संख्या {n_opt} के गुणज में नहीं है। "
+            "बेहतर रिज़ॉल्यूशन वाली OMR शीट अपलोड करें।",
             n_columns=len(cols)
         )
 
+    # Step 3: Group option columns into question blocks.
     groups = [
         cols[i:i + n_opt]
         for i in range(0, len(cols), n_opt)
@@ -240,55 +270,72 @@ def discover_grid(b, d, n_opt=N_OPT):
     for g in groups:
         gx = np.diff([c["x"] for c in g])
 
-        if (
-            len(gx) == 0
-            or gx.min() <= 0
-            or gx.max() / gx.min() > 1.4
-        ):
+        if len(gx) != n_opt - 1 or np.any(gx <= 0):
             return _fail(
                 "irregular",
-                "विकल्पों (A, B, C, D) के बीच की दूरी "
-                "अनियमित है; शीट मुड़ी या धुंधली हो सकती है।"
+                "A, B, C, D विकल्पों की स्थिति स्पष्ट नहीं है।"
+            )
+
+        # Allow more variation than the previous strict threshold.
+        if gx.max() / gx.min() > 1.8:
+            return _fail(
+                "irregular",
+                "विकल्पों के बीच दूरी अनियमित है। "
+                "सीधी और साफ़ OMR शीट अपलोड करें।"
             )
 
         inner_gaps.extend(gx.tolist())
 
     inner = float(np.median(inner_gaps))
 
-    for a, c in zip(groups[:-1], groups[1:]):
-        if c[0]["x"] - a[-1]["x"] < 1.25 * inner:
+    # Step 4: Validate separation between blocks.
+    for left, right in zip(groups[:-1], groups[1:]):
+        gap = right[0]["x"] - left[-1]["x"]
+
+        if gap < 1.10 * inner:
             return _fail(
                 "blocks",
-                "प्रश्न-कॉलम आपस में अलग नहीं पहचाने जा सके।"
+                "दो प्रश्न-ब्लॉक अलग नहीं पहचाने जा सके।"
             )
 
+    # Step 5: Detect rows and bubble positions in every block.
     blocks = []
 
     for g in groups:
-        centers = np.array([c["x"] for c in g])
+        centers = np.array([c["x"] for c in g], dtype=float)
 
         dist = np.abs(xs[:, None] - centers[None, :])
-
-        near = np.where(
-            dist.min(axis=1) <= 0.6 * d
-        )[0]
-
         opt_of = dist.argmin(axis=1)
 
+        # Keep detected bubbles near one of the four option columns.
+        near = np.where(dist.min(axis=1) <= 0.70 * d)[0]
+
+        if len(near) < 12:
+            return _fail(
+                "rows",
+                "प्रश्न-पंक्तियों के लिए पर्याप्त बुलबुले नहीं मिले।"
+            )
+
+        # Find rows using the detected bubble Y coordinates.
+        row_groups = cluster_1d(ys[near], 0.55 * d)
         rows = []
 
-        for r in cluster_1d(ys[near], 0.5 * d):
+        for r in row_groups:
             members = near[r]
 
-            if len(set(opt_of[members].tolist())) >= 2:
-                rows.append(float(ys[members].mean()))
+            # A valid row should have bubbles in at least two options.
+            distinct_options = len(set(opt_of[members].tolist()))
+
+            if distinct_options >= 2:
+                rows.append(float(np.median(ys[members])))
 
         rows = sorted(rows)
 
         if len(rows) < 3:
             return _fail(
                 "rows",
-                "एक प्रश्न-कॉलम में पर्याप्त पंक्तियाँ नहीं मिलीं।"
+                "प्रश्न-पंक्तियाँ पहचान नहीं पाए। "
+                "OMR शीट का पूरा भाग दिखाई देना चाहिए।"
             )
 
         rows = _core_rows(rows)
@@ -296,49 +343,55 @@ def discover_grid(b, d, n_opt=N_OPT):
         if len(rows) < 3:
             return _fail(
                 "rows",
-                "प्रश्न-पंक्तियों की दूरी नियमित नहीं मिली। "
-                "शीट मुड़ी या धुंधली हो सकती है।"
+                "प्रश्न-पंक्तियों की दूरी नियमित नहीं मिली।"
             )
 
         rows = _fill_missing_rows(rows)
 
+        # Refine each option's X coordinate using detected bubbles.
         cx_ref = []
 
         for j, c in enumerate(g):
-            sel = [
-                xs[i]
-                for i in near
-                if opt_of[i] == j
-                and np.min(np.abs(np.array(rows) - ys[i])) <= 0.5 * d
-            ]
+            selected_x = []
 
-            cx_ref.append(
-                float(np.median(sel))
-                if len(sel) >= 3
-                else c["x"]
-            )
+            for i in near:
+                if opt_of[i] != j:
+                    continue
 
+                if np.min(np.abs(np.asarray(rows) - ys[i])) <= 0.55 * d:
+                    selected_x.append(xs[i])
+
+            if len(selected_x) >= 3:
+                cx_ref.append(float(np.median(selected_x)))
+            else:
+                cx_ref.append(float(c["x"]))
+
+        # Build cells: (x, y, inferred)
         cells = []
 
         for ry in rows:
             row = []
 
-            for j, cxj in enumerate(cx_ref):
-                cx, cy, inferred = cxj, ry, True
-
-                dd = np.hypot(
+            for cxj in cx_ref:
+                distances = np.hypot(
                     b[:, 0] - cxj,
                     b[:, 1] - ry
                 )
 
-                k = int(np.argmin(dd))
+                k = int(np.argmin(distances))
 
-                if dd[k] <= 0.6 * d:
-                    cx = float(b[k, 0])
-                    cy = float(b[k, 1])
-                    inferred = False
-
-                row.append((cx, cy, inferred))
+                if distances[k] <= 0.70 * d:
+                    row.append((
+                        float(b[k, 0]),
+                        float(b[k, 1]),
+                        False
+                    ))
+                else:
+                    row.append((
+                        float(cxj),
+                        float(ry),
+                        True
+                    ))
 
             cells.append(row)
 
