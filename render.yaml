@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: railway-omr-auto-evaluation
+    runtime: docker
+    healthCheckPath: /healthz

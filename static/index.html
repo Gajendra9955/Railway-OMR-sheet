@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3d6e">
+<title>रेलवे OMR स्वतः जाँच</title>
+<style>
+:root{--bg:#f2f5f9;--card:#fff;--ink:#14212e;--mut:#5b6b7b;--line:#d9e1ea;--brand:#0b3d6e;--brand2:#1b6ec2;--ok:#157a3d;--okbg:#e7f6ec;--bad:#b3261e;--badbg:#fdecea;--warn:#8a5a00;--warnbg:#fff4de}
+@media (prefers-color-scheme:dark){:root{--bg:#0e141b;--card:#17202a;--ink:#e8eef4;--mut:#9fb0c1;--line:#2a3745;--brand:#0b3d6e;--brand2:#5aa2ee;--ok:#5fd38a;--okbg:#12301f;--bad:#ff8a80;--badbg:#3a1a18;--warn:#ffcf70;--warnbg:#38290d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Noto Sans Devanagari","Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+header{background:var(--brand);color:#fff;padding:18px 16px 16px}
+header h1{margin:0;font-size:20px;line-height:1.25}
+header p{margin:4px 0 0;font-size:13px;opacity:.85}
+main{max-width:640px;margin:0 auto;padding:14px 14px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{margin:0 0 8px;font-size:16px}
+.pick{display:flex;align-items:center;gap:12px;border:2px dashed var(--brand2);border-radius:12px;padding:14px;cursor:pointer;min-height:76px}
+.pick.has{border-style:solid;border-color:var(--ok);background:var(--okbg)}
+.pick input{position:absolute;width:1px;height:1px;opacity:0}
+.pick .ic{font-size:30px;flex:none}
+.pick .t{font-weight:600}
+.pick .s{font-size:13px;color:var(--mut);word-break:break-all}
+.pick img{width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex:none}
+button.main{width:100%;border:0;border-radius:14px;background:var(--brand2);color:#fff;font-size:17px;font-weight:700;padding:16px 10px;min-height:56px;letter-spacing:.2px}
+button.main small{display:block;font-weight:400;font-size:13px;opacity:.9;margin-top:2px}
+button.main:disabled{background:#8fa3b8;color:#eef3f8}
+button.sec{border:1px solid var(--brand2);background:transparent;color:var(--brand2);border-radius:12px;padding:12px 14px;font-size:15px;font-weight:600;min-height:46px}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;color:var(--mut)}
+.steps .d{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;margin-top:1px;display:grid;place-items:center;font-size:13px}
+.steps li.active{color:var(--ink);font-weight:600}.steps li.active .d{border-color:var(--brand2);border-top-color:transparent;animation:sp 0.9s linear infinite}
+.steps li.done{color:var(--ink)}.steps li.done .d{background:var(--ok);border-color:var(--ok);color:#fff}
+.steps li.error{color:var(--bad);font-weight:600}.steps li.error .d{background:var(--bad);border-color:var(--bad);color:#fff}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bar{height:8px;border-radius:6px;background:var(--line);overflow:hidden;margin-bottom:6px}.bar i{display:block;height:100%;width:0;background:var(--brand2);transition:width .4s}
+.msg{border-radius:10px;padding:10px 12px;margin:8px 0;font-size:15px}
+.msg.error{background:var(--badbg);color:var(--bad)}.msg.warning{background:var(--warnbg);color:var(--warn)}
+.msg b{display:block;margin-bottom:2px}
+.score{text-align:center;padding:10px 0 2px}.score .n{font-size:52px;font-weight:800;color:var(--brand2);line-height:1.1}.score .l{color:var(--mut);font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.cell{background:var(--bg);border-radius:10px;padding:10px 6px;text-align:center}.cell b{display:block;font-size:22px}.cell span{font-size:12px;color:var(--mut)}
+.cell.g b{color:var(--ok)}.cell.r b{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:6px 4px;text-align:center;border-bottom:1px solid var(--line)}
+tr.correct td{background:var(--okbg)}tr.wrong td{background:var(--badbg)}tr.unclear td,tr.multiple td{background:var(--warnbg)}
+details{margin-top:8px}summary{cursor:pointer;font-weight:600;padding:8px 0}
+.flag{display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding:8px 0;font-size:14px}.flag img{width:56%;max-width:260px;border:1px solid var(--line);border-radius:6px}
+.overlay{width:100%;border-radius:8px;border:1px solid var(--line)}
+label.f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;font-size:15px}
+label.f input,label.f select{font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;width:120px;background:var(--card);color:var(--ink)}
+.hide{display:none}
+.note{font-size:13px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>रेलवे OMR स्वतः जाँच प्रणाली</h1>
+  <p>उत्तर कुंजी और OMR शीट अपलोड करें — अंक अपने-आप निकलेंगे। उत्तर हाथ से भरने की ज़रूरत नहीं।</p>
+</header>
+<main>
+  <div id="inputs">
+    <div class="card">
+      <h2>1. आधिकारिक उत्तर कुंजी (Answer Key)</h2>
+      <label class="pick" id="pickKey"><span class="ic">📄</span><span><span class="t">उत्तर कुंजी चुनें</span><br><span class="s">PDF, JPG, JPEG या PNG</span></span>
+        <input type="file" id="fKey" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label>
+    </div>
+    <div class="card">
+      <h2>2. भरी हुई OMR शीट</h2>
+      <label class="pick" id="pickOmr"><span class="ic">📝</span><span><span class="t">OMR शीट चुनें</span><br><span class="s">PDF, JPG, JPEG या PNG</span></span>
+        <input type="file" id="fOmr" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label>
+    </div>
+    <button class="main" id="go" disabled>READ BOTH FILES &amp; CALCULATE MARKS<small>दोनों फ़ाइलें पढ़ें और अंक निकालें</small></button>
+    <details class="card" style="margin-top:12px">
+      <summary>अंकन नियम (ज़रूरत हो तो बदलें)</summary>
+      <label class="f">सही उत्तर पर अंक <input type="number" id="sCorrect" step="0.01" value="1"></label>
+      <label class="f">गलत उत्तर पर कटौती <input type="number" id="sNeg" step="0.01" value="0.33"></label>
+      <label class="f">एक से अधिक निशान
+        <select id="sMulti"><option value="zero">0 अंक</option><option value="wrong">गलत गिनें</option></select></label>
+      <label class="f">Dropped/Bonus प्रश्न
+        <select id="sDrop"><option value="full">सबको पूरे अंक</option><option value="normal">सामान्य गिनें</option></select></label>
+      <p class="note">आम रेलवे नियम: सही +1, गलत −1/3 (0.33)। अपनी परीक्षा का नियम देखकर जाँच लें।</p>
+    </details>
+  </div>
+
+  <div class="card hide" id="progress">
+    <div class="bar"><i id="barfill"></i></div>
+    <ul class="steps" id="steps"></ul>
+    <p class="note" id="waitnote">स्कैन की गई PDF में 30–60 सेकंड लग सकते हैं। पेज बंद न करें।</p>
+  </div>
+
+  <div id="out"></div>
+</main>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var state={key:null,omr:null,keyFile:null,omrFile:null};
+  var STEPS=["उत्तर कुंजी पढ़ी जा रही है","OMR शीट सीधी करके बुलबुले खोजे जा रहे हैं","दोनों फ़ाइलों का मिलान और जाँच","अंक की गणना"];
+  var MAXMB=25;
+
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+
+  function setup(inputId,pickId,fileKey){
+    $(inputId).addEventListener('change',function(ev){
+      var f=ev.target.files[0]||null,pick=$(pickId);
+      var old=pick.querySelector('img');if(old)old.remove();
+      var t=pick.querySelector('.t'),s=pick.querySelector('.s'),ic=pick.querySelector('.ic');
+      state[fileKey]=null;
+      if(f&&f.size>MAXMB*1024*1024){alert('फ़ाइल '+MAXMB+' MB से बड़ी है।');ev.target.value='';f=null}
+      if(!f){pick.classList.remove('has');ic.style.display='';refresh();return}
+      state[fileKey]=f;
+      pick.classList.add('has');t.textContent='✔ चुनी गई फ़ाइल';s.textContent=f.name+' ('+(f.size/1024/1024).toFixed(2)+' MB)';
+      if(/^image\//.test(f.type)){var im=el('img');im.alt='';im.src=URL.createObjectURL(f);pick.insertBefore(im,pick.firstChild);ic.style.display='none'}
+      else ic.style.display='';
+      refresh();
+    });
+  }
+  function refresh(){$('go').disabled=!(state.keyFile&&state.omrFile)}
+  setup('fKey','pickKey','keyFile');setup('fOmr','pickOmr','omrFile');
+
+  function settings(){
+    var s={correct:parseFloat($('sCorrect').value),negative:parseFloat($('sNeg').value),multiple:$('sMulti').value,dropped:$('sDrop').value};
+    try{localStorage.setItem('omr_settings',JSON.stringify(s))}catch(e){}
+    return s;
+  }
+  try{var sv=JSON.parse(localStorage.getItem('omr_settings')||'null');if(sv){$('sCorrect').value=sv.correct;$('sNeg').value=sv.negative;$('sMulti').value=sv.multiple;$('sDrop').value=sv.dropped}}catch(e){}
+
+  // ---------- progress ----------
+  function drawSteps(active,failed){
+    var ul=$('steps');ul.innerHTML='';
+    STEPS.forEach(function(t,i){
+      var li=el('li',i<active?'done':(i==active?(failed?'error':'active'):''));
+      var d=el('span','d',i<active?'✓':(i==active&&failed?'!':''));li.appendChild(d);li.appendChild(el('span',null,t));ul.appendChild(li);
+    });
+    $('barfill').style.width=Math.round(100*(failed?active:active+0.5)/STEPS.length)+'%';
+  }
+
+  async function post(url,fd){
+    var r;
+    try{r=await fetch(url,{method:'POST',body:fd})}catch(e){throw new Error('सर्वर से संपर्क नहीं हो पाया। इंटरनेट जाँचें और दोबारा कोशिश करें।')}
+    var j;try{j=await r.json()}catch(e){throw new Error('सर्वर ने अमान्य उत्तर दिया (कोड '+r.status+')। कुछ देर बाद दोबारा कोशिश करें।')}
+    return j;
+  }
+
+  function showProblems(parent,problems){
+    (problems||[]).forEach(function(p){
+      var m=el('div','msg '+(p.level=='error'?'error':'warning'));
+      m.appendChild(el('b',null,p.level=='error'?'समस्या':'ध्यान दें'));
+      m.appendChild(document.createTextNode(p.message));
+      parent.appendChild(m);
+    });
+  }
+
+  function fail(step,title,problems,extra){
+    drawSteps(step,true);
+    var out=$('out');out.innerHTML='';
+    var c=el('div','card');c.appendChild(el('h2',null,title));
+    showProblems(c,problems);
+    if(extra)extra(c);
+    var b=el('button','sec','फिर से कोशिश करें / फ़ाइल बदलें');b.onclick=resetAll;c.appendChild(b);
+    out.appendChild(c);
+    $('waitnote').classList.add('hide');
+  }
+
+  function resetAll(){
+    $('out').innerHTML='';$('progress').classList.add('hide');$('inputs').classList.remove('hide');window.scrollTo(0,0);
+  }
+
+  // ---------- main flow ----------
+  async function run(force){
+    $('inputs').classList.add('hide');$('progress').classList.remove('hide');$('waitnote').classList.remove('hide');$('out').innerHTML='';
+    drawSteps(0);
+    var key,omr;
+    try{
+      var fd=new FormData();fd.append('file',state.keyFile);
+      key=await post('/api/read-key',fd);
+      if(!key.ok||key.blocking){return fail(0,'उत्तर कुंजी भरोसे से नहीं पढ़ी जा सकी — अंक नहीं निकाले गए',key.problems)}
+      state.key=key;drawSteps(1);
+      var fd2=new FormData();fd2.append('file',state.omrFile);if(force)fd2.append('force_layout','1');
+      omr=await post('/api/read-omr',fd2);
+      if(omr.blocking||!omr.ok){
+        return fail(1,'OMR शीट भरोसे से नहीं पढ़ी जा सकी — अंक नहीं निकाले गए',omr.problems,function(c){
+          if(omr.overlay){var im=el('img','overlay');im.alt='पहचाना गया लेआउट';im.src=omr.overlay;c.appendChild(im)}
+          if(omr.needs_confirmation){
+            var p=el('p','note','अगर चित्र में हर प्रश्न की चार बुलबुलों वाली पंक्ति सही पहचानी गई है और यह वही परीक्षा की शीट है, तो आगे बढ़ सकते हैं।');c.appendChild(p);
+            var b=el('button','main','लेआउट सही है — आगे बढ़ें');b.style.margin='8px 0';b.onclick=function(){run(true)};c.appendChild(b);
+          }
+        });
+      }
+      state.omr=omr;drawSteps(2);
+      var sc=await (await fetch('/api/score',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,omr:omr,settings:settings()})})).json();
+      drawSteps(3);
+      if(!sc.ok){return fail(2,'अंक नहीं निकाले गए',sc.problems)}
+      drawSteps(4);
+      show(sc,key,omr);
+    }catch(e){
+      fail(0,'त्रुटि',[{level:'error',message:e.message||String(e)}]);
+    }
+  }
+  $('go').addEventListener('click',function(){run(false)});
+
+  function show(sc,key,omr){
+    $('waitnote').classList.add('hide');
+    var out=$('out');out.innerHTML='';
+    var c=el('div','card');
+    var s=el('div','score');s.appendChild(el('div','n',String(sc.total)));s.appendChild(el('div','l','कुल अंक ('+sc.n+' प्रश्नों में)'));
+    if(sc.counts.unclear>0)s.appendChild(el('div','l','अस्पष्ट निशान सहित संभावित सीमा: '+sc.min_possible+' से '+sc.max_possible));
+    c.appendChild(s);
+    var g=el('div','grid');
+    function cell(cls,n,l){var d=el('div','cell '+cls);d.appendChild(el('b',null,String(n)));d.appendChild(el('span',null,l));g.appendChild(d)}
+    cell('g',sc.counts.correct,'सही');cell('r',sc.counts.wrong,'गलत');cell('',sc.counts.unattempted,'छोड़े गए');
+    cell('',sc.counts.multiple,'एक से अधिक निशान');cell('',sc.counts.unclear,'अस्पष्ट/हल्का');cell('',sc.counts.bonus,'Dropped/Bonus');
+    c.appendChild(g);
+    c.appendChild(el('p','note','प्रयास किए: '+sc.attempted+' · सटीकता: '+sc.accuracy+'% · नियम: सही +'+sc.settings.correct+', गलत −'+sc.settings.negative));
+    showProblems(c,omr.problems.concat(key.problems).filter(function(p){return p.level!='error'}));
+    var b=el('button','sec','नई जाँच करें');b.onclick=function(){resetAll()};c.appendChild(b);
+    out.appendChild(c);
+
+    var fl=sc.rows.filter(function(r){return r.crop});
+    if(fl.length){
+      var d=el('details','card');d.open=true;d.appendChild(el('summary',null,'जाँच के लिए चिह्नित प्रश्न ('+fl.length+')'));
+      d.appendChild(el('p','note','ये निशान हल्के/अस्पष्ट/एक से अधिक थे। चित्र देखकर खुद मिला लें।'));
+      fl.forEach(function(r){
+        var f=el('div','flag');var im=el('img');im.alt='प्रश्न '+r.q;im.src=r.crop;f.appendChild(im);
+        var t=el('div');t.appendChild(el('b',null,'प्रश्न '+r.q));t.appendChild(el('div',null,'कुंजी: '+(r.key||'—')));
+        t.appendChild(el('div',null,({unclear:'हल्का/अस्पष्ट निशान',multiple:'एक से अधिक निशान',correct:'पहचाना: '+r.marked+' (हल्का निशान)',wrong:'पहचाना: '+r.marked+' (हल्का निशान)',bonus:'Dropped/Bonus'})[r.result]||r.result));
+        f.appendChild(t);d.appendChild(f);
+      });
+      out.appendChild(d);
+    }
+
+    var q=el('details','card');q.appendChild(el('summary',null,'प्रश्न-वार परिणाम'));
+    var tb=el('table');var th=el('tr');['प्र.','कुंजी','आपका','अंक'].forEach(function(h){th.appendChild(el('th',null,h))});tb.appendChild(th);
+    sc.rows.forEach(function(r){
+      var tr=el('tr',r.result);
+      var mk=r.marked||(r.result=='multiple'?'एक से अधिक':(r.result=='unclear'?'अस्पष्ट':(r.result=='bonus'?'—':'खाली')));
+      [r.q,r.key||'—',mk,r.marks>0?'+'+r.marks:String(r.marks)].forEach(function(v){tr.appendChild(el('td',null,String(v)))});tb.appendChild(tr);
+    });
+    q.appendChild(tb);out.appendChild(q);
+
+    var o=el('details','card');o.appendChild(el('summary',null,'OMR कैसे पहचानी गई (जाँच के लिए चित्र)'));
+    var im=el('img','overlay');im.alt='पहचाना गया OMR';im.src=omr.overlay;o.appendChild(im);
+    o.appendChild(el('p','note','हरा घेरा = चुना गया उत्तर, नारंगी = हल्का/अस्पष्ट, लाल = एक से अधिक निशान। पहचाना लेआउट: '+omr.template.detected));
+    out.appendChild(o);
+    window.scrollTo(0,0);
+  }
+})();
+</script>
+</body>
+</html>
