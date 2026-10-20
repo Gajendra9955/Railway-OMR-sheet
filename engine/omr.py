@@ -757,21 +757,53 @@ def verify_numbers(gray, layout):
 # 7/8. measuring + classification
 # ----------------------------------------------------------------------------
 def cell_fraction(gray, cx, cy, r):
+    """
+    Measure dark ink inside a bubble relative to its local surroundings.
+    """
     H, W = gray.shape
-    ri = max(2.0, 0.55 * r)
-    R = int(np.ceil(1.9 * r))
-    x0, x1 = max(0, int(round(cx)) - R), min(W, int(round(cx)) + R + 1)
-    y0, y1 = max(0, int(round(cy)) - R), min(H, int(round(cy)) + R + 1)
+
+    # Measure inside the central part of the bubble,
+    # avoiding most of the printed pink outline.
+    ri = max(2.0, 0.45 * r)
+
+    R = max(int(np.ceil(2.2 * r)), 3)
+
+    x0 = max(0, int(round(cx)) - R)
+    x1 = min(W, int(round(cx)) + R + 1)
+    y0 = max(0, int(round(cy)) - R)
+    y1 = min(H, int(round(cy)) + R + 1)
+
     patch = gray[y0:y1, x0:x1]
+
     if patch.size == 0:
         return 0.0
-    paper = float(np.percentile(patch, 92))
+
     yy, xx = np.ogrid[y0:y1, x0:x1]
-    mask = (xx - cx) ** 2 + (yy - cy) ** 2 <= ri * ri
-    vals = patch[mask[: patch.shape[0], : patch.shape[1]]]
-    if vals.size == 0:
+
+    # Central bubble area
+    inner_mask = (
+        (xx - cx) ** 2 + (yy - cy) ** 2 <= ri ** 2
+    )
+
+    # Surrounding ring used as a local paper reference
+    dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
+    outer_mask = (
+        (dist2 >= (1.25 * r) ** 2) &
+        (dist2 <= (2.0 * r) ** 2)
+    )
+
+    inner = patch[inner_mask]
+    outer = patch[outer_mask]
+
+    if inner.size == 0 or outer.size == 0:
         return 0.0
-    return float(np.mean(vals < 0.72 * paper))
+
+    paper_level = float(np.percentile(outer, 75))
+
+    # Count pixels that are substantially darker than local paper.
+    threshold = min(paper_level - 25.0, paper_level * 0.72)
+
+    return float(np.mean(inner < threshold))
 
 
 def measure(gray, layout):
