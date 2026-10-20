@@ -132,48 +132,123 @@ def cluster_1d(vals, tol):
 
 
 def find_bubbles(gray):
-    """-> (array Nx3 of cx, cy, diameter), median diameter) for round-ish blobs of the dominant size."""
+    """
+    Detect printed OMR bubbles using OpenCV.
+    Designed for Railway OMR sheets with pale pink outlines.
+    Returns:
+        bubbles: Nx3 array (center_x, center_y, diameter)
+        median_diameter: median bubble diameter
+    """
     h, w = gray.shape
+
+    if h < 100 or w < 100:
+        return np.zeros((0, 3), dtype=np.float32), 0.0
+
+    # Normalize image size for more consistent bubble detection.
     blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    bs = int(round(w * 0.035)) | 1
-    # Railway OMRs often use pale pink outlines. A lower adaptive-threshold
-    # offset preserves these printed circles instead of detecting only dark fills.
-    bs = max(31, min(bs, 151))
-    th = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, bs, 7)
-    cnts, hier = cv2.findContours(th, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    dmin, dmax = 0.007 * w, 0.045 * w
-    cand = []
-    if hier is None:
-        return np.zeros((0, 3)), 0.0
-    for i, c in enumerate(cnts):
-        if hier[0][i][3] != -1:
-            continue
-        x, y, bw, bh = cv2.boundingRect(c)
+
+    # Adaptive threshold: retain light printed bubble outlines.
+    block_size = max(31, min(int(round(w * 0.025)) | 1, 151))
+
+    th = cv2.adaptiveThreshold(
+        blur,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        block_size,
+        5
+    )
+
+    # Join small gaps in bubble outlines without joining neighbouring bubbles.
+    kernel_size = max(2, int(round(w * 0.0008)))
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (kernel_size, kernel_size)
+    )
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    contours, hierarchy = cv2.findContours(
+        th,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    if hierarchy is None or not contours:
+        return np.zeros((0, 3), dtype=np.float32), 0.0
+
+    # Expected bubble size relative to normalized image width.
+    dmin = max(6, 0.006 * w)
+    dmax = 0.035 * w
+
+    candidates = []
+
+    for contour in contours:
+        x, y, bw, bh = cv2.boundingRect(contour)
+
         if not (dmin <= bw <= dmax and dmin <= bh <= dmax):
             continue
-        ar = bw / float(bh)
-        if not 0.7 <= ar <= 1.43:
+
+        aspect = bw / float(bh)
+
+        if not 0.75 <= aspect <= 1.33:
             continue
-        area = cv2.contourArea(c)
-        per = cv2.arcLength(c, True)
-        if per <= 0:
+
+        perimeter = cv2.arcLength(contour, True)
+
+        if perimeter <= 0:
             continue
-        circ = 4 * np.pi * area / (per * per)
-        ext = area / float(bw * bh)
-        if circ < 0.48 or ext < 0.48:
+
+        area = cv2.contourArea(contour)
+        circularity = 4.0 * np.pi * area / (perimeter * perimeter)
+
+        # Reject lines and rectangular marks.
+        if circularity < 0.40:
             continue
-        cand.append((x + bw / 2.0, y + bh / 2.0, (bw + bh) / 2.0))
-    if len(cand) < 8:
-        return np.zeros((0, 3)), 0.0
-    cand = np.array(cand)
-    ds = cand[:, 2]
-    best_n, best_d = 0, 0
-    for d0 in ds:
-        n = int(np.sum((ds >= 0.8 * d0) & (ds <= 1.2 * d0)))
-        if n > best_n:
-            best_n, best_d = n, d0
-    keep = cand[(ds >= 0.8 * best_d) & (ds <= 1.2 * best_d)]
-    return keep, float(np.median(keep[:, 2]))
+
+        # Approximate bubble center.
+        moments = cv2.moments(contour)
+
+        if moments["m00"] != 0:
+            cx = moments["m10"] / moments["m00"]
+            cy = moments["m01"] / moments["m00"]
+        else:
+            cx = x + bw / 2.0
+            cy = y + bh / 2.0
+
+        diameter = (bw + bh) / 2.0
+
+        candidates.append((cx, cy, diameter))
+
+    if len(candidates) < 8:
+        return np.zeros((0, 3), dtype=np.float32), 0.0
+
+    candidates = np.asarray(candidates, dtype=np.float32)
+
+    # Estimate the dominant bubble diameter.
+    diameters = candidates[:, 2]
+    best_count = 0
+    best_diameter = float(np.median(diameters))
+
+    for diameter in diameters:
+        similar = np.abs(diameters - diameter) <= 0.18 * diameter
+        count = int(np.sum(similar))
+
+        if count > best_count:
+            best_count = count
+            best_diameter = float(diameter)
+
+    # Retain bubbles near the dominant diameter.
+    keep_mask = (
+        (diameters >= 0.82 * best_diameter) &
+        (diameters <= 1.18 * best_diameter)
+    )
+
+    bubbles = candidates[keep_mask]
+
+    if len(bubbles) < 8:
+        return np.zeros((0, 3), dtype=np.float32), 0.0
+
+    return bubbles, float(np.median(bubbles[:, 2]))
 
 
 def estimate_skew(b, d):
